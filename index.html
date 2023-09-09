@@ -5,6 +5,8 @@
   </head>
   <body>
 
+<script src="./utils.js"></script>
+
 <script>
 
 // Toggle this to disable the room hiding / layer scale, so you can see the
@@ -51,7 +53,7 @@ const debug = false;
     ],
 };
 
-eventCenter = new Phaser.Events.EventEmitter();
+var eventCenter = new Phaser.Events.EventEmitter();
 
 class Yendor extends Phaser.Scene
 {
@@ -69,18 +71,36 @@ class Yendor extends Phaser.Scene
     atk = 0;
     def = 0;
 
+    load_monster_assets() {
+        this.load.spritesheet('bat', 'assets/sprites/32x32-bat-sprite.png',
+                              { frameWidth:32,
+                                frameHeight:32
+                              });
+
+        
+    }
+
+    load_player_assets() {
+        this.load.image('player_fighter', 'assets/images/fighter.png');
+    }
+
     preload ()
     {
         // Dungeon tiles
         this.load.image('tiles', 'assets/tilemaps/tiles/dungeon_tiles.png');
+
         // Player and monster sprites
-        this.load.image('player_fighter', 'assets/images/fighter.png');
-        this.load.spritesheet('bat', 'assets/sprites/32x32-bat-sprite.png',
-                              {frameWidth:32, frameHeight:32});
+        this.load_player_assets();
+        this.load_monster_assets();
+
         // Audio
         this.load.audio('coins', 'assets/audio/coins.wav');
         this.load.audio('creak', 'assets/audio/wooden-creak.wav');
         this.load.audio('bell', 'assets/audio/bell.wav');
+    }
+
+    create_monster() {
+        
     }
 
     create ()
@@ -245,6 +265,8 @@ class Yendor extends Phaser.Scene
         this.monster = this.add.sprite(250,200, 'bat').setScale(0.5*this.layer.scaleX).play('bat-flap');
         this.monster.x = this.map.tileToWorldX(playerRoom.x + 2);
         this.monster.y = this.map.tileToWorldY(playerRoom.y + 1);
+        this.monster.room = playerRoom;
+        this.monster.alpha = 1.0;
 
         // Create the player's torch effect
         this.light = this.lights.addLight(this.player.x, this.player.y, 400, 0xfffffff, 3.);
@@ -258,6 +280,7 @@ class Yendor extends Phaser.Scene
         if (!debug)
         {
             this.setRoomAlpha(playerRoom, 1.0); // Make the starting room visible
+            this.monster.alpha = 1.0;
         }
 
         // Scroll to the player
@@ -289,6 +312,14 @@ class Yendor extends Phaser.Scene
             {
                 this.setRoomAlpha(room, 1);
                 this.setRoomAlpha(this.activeRoom, 0.5);
+            }
+            if (this.monster.room == room)
+            {
+                this.monster.alpha = 1.0;
+            }
+            else
+            {
+                this.monster.alpha = 0.25;
             }
         }
 
