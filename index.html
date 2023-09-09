@@ -76,8 +76,6 @@ class Yendor extends Phaser.Scene
                               { frameWidth:32,
                                 frameHeight:32
                               });
-
-        
     }
 
     load_player_assets() {
@@ -97,58 +95,24 @@ class Yendor extends Phaser.Scene
         this.load.audio('coins', 'assets/audio/coins.wav');
         this.load.audio('creak', 'assets/audio/wooden-creak.wav');
         this.load.audio('bell', 'assets/audio/bell.wav');
-    }
 
-    create_monster() {
-        
     }
 
     create ()
     {
-        // Note: Dungeon is not a Phaser element - it's from the custom script embedded
-        // at the bottom
-        // It generates a simple set of connected rectangular rooms that then we can
-        // turn into a tilemap
+        // Load audio
+        this.coin_sound = this.sound.add('coins');
+        this.creak_sound = this.sound.add('creak');
+        this.bell_sound = this.sound.add('bell');
 
-        //  2,500 tile test
-        // dungeon = new Dungeon({
-        //     width: 50,
-        //     height: 50,
-        //     rooms: {
-        //         width: { min: 7, max: 15, onlyOdd: true },
-        //         height: { min: 7, max: 15, onlyOdd: true }
-        //     }
-        // });
-
-        //  40,000 tile test
         this.dungeon = new Dungeon({
-            width: 200,
-            height: 200,
+            width: 100,
+            height: 100,
             rooms: {
                 width: { min: 7, max: 20, onlyOdd: true },
                 height: { min: 7, max: 20, onlyOdd: true }
             }
         });
-
-        //  250,000 tile test!
-        // dungeon = new Dungeon({
-        //     width: 500,
-        //     height: 500,
-        //     rooms: {
-        //         width: { min: 7, max: 20, onlyOdd: true },
-        //         height: { min: 7, max: 20, onlyOdd: true }
-        //     }
-        // });
-
-        //  1,000,000 tile test! - Warning, takes a few seconds to generate the dungeon :)
-        // dungeon = new Dungeon({
-        //     width: 1000,
-        //     height: 1000,
-        //     rooms: {
-        //         width: { min: 7, max: 20, onlyOdd: true },
-        //         height: { min: 7, max: 20, onlyOdd: true }
-        //     }
-        // });
 
         // Creating a blank tilemap with dimensions matching the dungeon
         this.map = this.make.tilemap({
@@ -158,7 +122,7 @@ class Yendor extends Phaser.Scene
             height: this.dungeon.height
         });
 
-
+        // Load tileset and create the dungeon layer
         var tileset = this.map.addTilesetImage('tiles', 'tiles', 16, 16, 0, 0);
         this.layer = this.map.createBlankLayer('dungeon', tileset).setPipeline('Light2D');
 
@@ -166,9 +130,6 @@ class Yendor extends Phaser.Scene
         {
             this.layer.setScale(3);
         }
-
-        //this.layer.fill(310);
-
 
         // Use the array of rooms generated to place tiles in the map
         this.dungeon.rooms.forEach(function (room) {
@@ -184,7 +145,6 @@ class Yendor extends Phaser.Scene
             var bottom = y + (h - 1);
 
             // Fill the floor with mostly clean tiles, but occasionally place a dirty tile
-            // See "Weighted Randomize" example for more information on how to use weightedRandomize.
             this.map.weightedRandomize(TILES.FLOOR, x, y, w, h);
 
             // Place the room corners tiles
@@ -193,7 +153,7 @@ class Yendor extends Phaser.Scene
             this.map.putTileAt(TILES.BOTTOM_RIGHT_WALL, right, bottom);
             this.map.putTileAt(TILES.BOTTOM_LEFT_WALL, left, bottom);
 
-            // Fill the walls with mostly clean tiles, but occasionally place a dirty tile
+            // Fill the walls with
             this.map.weightedRandomize(TILES.TOP_WALL, left + 1, top, w - 2, 1);
             this.map.weightedRandomize(TILES.BOTTOM_WALL, left + 1, bottom, w - 2, 1);
             this.map.weightedRandomize(TILES.LEFT_WALL, left, top + 1, 1, h - 2);
@@ -230,14 +190,12 @@ class Yendor extends Phaser.Scene
                     this.layer.putTileAt(343, cx+1, cy+1);
                 }
             }
-
-
         }, this);
 
+        // The player collides with everything except:
         this.layer.setCollisionByExclusion([TILES.BLANK, // blank
-                                            72, 74, // floor
-                                            469, 492, // door
-                                            //319, 320, 342, 343
+                                            72, 74,      // floor
+                                            469, 492,    // door
                                            ]);
 
         // Hide all the rooms
@@ -248,11 +206,13 @@ class Yendor extends Phaser.Scene
 
         // Place the player in the first room
         var playerRoom = this.dungeon.rooms[0];
-
-        //this.player = this.add.image(214, 200, 'player_fighter').setScale(0.5*this.layer.scaleX);
         this.player = this.add.sprite(214, 200, 'player_fighter').setScale(0.5*this.layer.scaleX);
         this.player.x = this.map.tileToWorldX(playerRoom.x + 1);
         this.player.y = this.map.tileToWorldY(playerRoom.y + 1);
+
+        // Create the player's torch effect
+        this.light = this.lights.addLight(this.player.x, this.player.y, 400, 0xfffffff, 3.);
+        this.lights.enable().setAmbientColor(0x555555);
 
         // Create a monster
         const anim_config = {
@@ -268,15 +228,6 @@ class Yendor extends Phaser.Scene
         this.monster.room = playerRoom;
         this.monster.alpha = 1.0;
 
-        // Create the player's torch effect
-        this.light = this.lights.addLight(this.player.x, this.player.y, 400, 0xfffffff, 3.);
-        this.lights.enable().setAmbientColor(0x555555);
-
-        // Load audio
-        this.coin_sound = this.sound.add('coins');
-        this.creak_sound = this.sound.add('creak');
-        this.bell_sound = this.sound.add('bell');
-
         if (!debug)
         {
             this.setRoomAlpha(playerRoom, 1.0); // Make the starting room visible
@@ -285,7 +236,6 @@ class Yendor extends Phaser.Scene
 
         // Scroll to the player
         this.cam = this.cameras.main;
-
         this.cam.setBounds(0, 0,
                            this.layer.width * this.layer.scaleX,
                            this.layer.height * this.layer.scaleY);
@@ -328,9 +278,10 @@ class Yendor extends Phaser.Scene
         // Smooth follow the player
         var smoothFactor = 0.9;
 
-        this.cam.scrollX = smoothFactor * this.cam.scrollX + (1 - smoothFactor) * (this.player.x - this.cam.width * 0.5);
-        this.cam.scrollY = smoothFactor * this.cam.scrollY + (1 - smoothFactor) * (this.player.y - this.cam.height * 0.5);
-
+        this.cam.scrollX = smoothFactor * this.cam.scrollX +
+            (1 - smoothFactor) * (this.player.x - this.cam.width * 0.5);
+        this.cam.scrollY = smoothFactor * this.cam.scrollY +
+            (1 - smoothFactor) * (this.player.y - this.cam.height * 0.5);
     }
 
     // Helper functions
@@ -412,7 +363,6 @@ class Yendor extends Phaser.Scene
             }
             else if (this.cursors.up.isDown)
             {
-                //console.log(this.map.getTileAt(this.player.x, this.player.y));
                 if (this.preMovementHandler(this.player.x, this.player.y - th))
                 {
                     this.player.y -= th;
@@ -474,7 +424,7 @@ class UIScene extends Phaser.Scene
         //  Listen for events from it
         eventCenter.on('chgScore', function (val) {
             this.score = val;
-            score_text.setText(`Score: ${this.score}`);
+            score_text.setText('Score: ${this.score}');
         }, this);
 
         eventCenter.on('chgHP', function (val) {
