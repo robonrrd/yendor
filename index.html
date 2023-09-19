@@ -68,10 +68,9 @@ class Yendor extends Phaser.Scene
     objects;
     monsters = [];
 
+    fights = new Map();
+
     score = 0;
-    hp = 6;
-    atk = 0;
-    def = 0;
 
     load_monster_assets()
     {
@@ -104,7 +103,16 @@ class Yendor extends Phaser.Scene
     }
 
     monster_collision(A, B) {
-        console.log(A.name, "vs.", B.name);
+        var nn = "";
+        if (A.name.localeCompare(B.name) == -1)
+            nn = A.name + B.name;
+        else
+            nn = B.name + A.name;
+        this.fights[nn] = [A, B];
+    }
+
+    always_true(A, B) {
+        return true;
     }
 
     create_monster(x, y, scale)
@@ -137,8 +145,14 @@ class Yendor extends Phaser.Scene
             name = "ghost_"+idx.toString();
         }
 
-        var monster = this.physics.add.sprite(x, y, 'monster_tiles', idx).setScale(1.5*scale);
+        var monster = this.physics.add.image(x, y, 'monster_tiles', idx).setScale(1.5*scale);
+        monster.setPushable(false);
         monster.name = name;
+        // TEMP: temporary values
+        monster.atk = 1;
+        monster.def = 0;
+        monster.hp = 4;
+
         return monster;
     }
 
@@ -253,10 +267,14 @@ class Yendor extends Phaser.Scene
 
         // Place the player in the first room
         var playerRoom = this.dungeon.rooms[0];
-        this.player = this.physics.add.sprite(214, 200, 'player_fighter').setScale(0.5*this.layer.scaleX);
+        this.player = this.physics.add.image(214, 200, 'player_fighter').setScale(0.5*this.layer.scaleX);
         this.player.name = 'player';
         this.player.x = this.map.tileToWorldX(playerRoom.x + 1);
         this.player.y = this.map.tileToWorldY(playerRoom.y + 1);
+        this.player.hp = 6;
+        this.player.atk = 0;
+        this.player.def = 0;
+
 
         // Create the player's torch effect
         this.light = this.lights.addLight(this.player.x, this.player.y, 400, 0xfffffff, 3.);
@@ -289,7 +307,9 @@ class Yendor extends Phaser.Scene
                                                           0.5*this.layer.scaleX );
                     new_monster.alpha = 1.0;
                     new_monster.room = room;
-                    this.physics.add.collider(this.player, new_monster, this.monster_collision);
+
+                    this.physics.add.collider(this.player, new_monster, this.monster_collision,
+                                              this.always_true, this);
                     new_monster.room = room;
                     this.monsters.push( new_monster );
                 }
@@ -380,6 +400,31 @@ class Yendor extends Phaser.Scene
         }
     }
 
+    tilesIntersect(xa, ya, xb, yb) // player, monster
+    {
+        const a_sz = 32;
+        const b_sz = 24;
+        if ((xa <= xb+b_sz) && (xb <= (xa+a_sz)) && (ya <= yb+b_sz) && (yb <= (ya+a_sz)))
+            return true;
+        return false;
+    }
+
+    isMonsterHere(worldX, worldY)
+    {
+        var playerTileX = this.map.worldToTileX(worldX);
+        var playerTileY = this.map.worldToTileY(worldY);
+        var room = this.dungeon.getRoomAt(playerTileX, playerTileY);
+
+        for (var monster of this.monsters) {
+            if ((monster.room == room) &&
+                this.tilesIntersect(worldX, worldY, monster.x, monster.y))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     blankTile(tile) {
         tile.index = TILES.BLANK;
         this.map.setCollision(TILES.BLANK, false);
@@ -397,12 +442,12 @@ class Yendor extends Phaser.Scene
         // add random weapon or armor
         var rand = Math.random();
         if (rand <= 0.5) {
-            this.atk += 1;
-            eventCenter.emit('chgAtk', this.atk);
+            this.player.atk += 1;
+            eventCenter.emit('chgAtk', this.player.atk);
         }
         else {
-            this.def += 1;
-            eventCenter.emit('chgDef', this.def);
+            this.player.def += 1;
+            eventCenter.emit('chgDef', this.player.def);
         }
         this.bell_sound.setVolume(0.5);
         this.bell_sound.play();
@@ -427,11 +472,39 @@ class Yendor extends Phaser.Scene
     monster_action(monster)
     {
         // move towards player
-        
     }
 
     move_monsters()
     {
+        // resolve fights
+        const before_hp = this.player.hp;
+        for (const [key, fighters] of Object.entries(this.fights)) {
+            var A = fighters[0];
+            var B = fighters[1];
+
+            console.log(A.name, "vs.", B.name);
+            var A_atk = randInt(6) + A.atk;
+            var B_atk = randInt(6) + B.atk;
+            if (A_atk > B.def) {
+                var dam = A_atk-B.def;
+                console.log(A.name, "hit for", dam);
+                A.hp -= dam;
+            }
+            console.log(B_atk, A.def);
+            if (B_atk > A.def) {
+                var dam = B_atk-A.def;
+                console.log(B.name, "hit for", dam);
+                B.hp -= dam;
+            }
+        }
+        this.fights = {};
+
+        console.log("HP:", before_hp, this.player.hp);
+        if (before_hp != this.player.hp) {
+            eventCenter.emit('chgHP', this.player.hp);
+        }
+
+
         var playerTileX = this.map.worldToTileX(this.player.x);
         var playerTileY = this.map.worldToTileY(this.player.y);
         var room = this.dungeon.getRoomAt(playerTileX, playerTileY);
@@ -451,11 +524,14 @@ class Yendor extends Phaser.Scene
 
         var player_moved = false;
         if (time > this.lastMoveTime + repeatMoveDelay) {
+            // move the player
+            var delta = [0, 0];
             if (this.cursors.down.isDown)
             {
                 if (this.preMovementHandler(this.player.x, this.player.y + th))
                 {
-                    this.player.y += th;
+                    //this.player.y += th;
+                    delta[1] = th;
                     this.lastMoveTime = time;
                     player_moved = true;
                 }
@@ -464,7 +540,8 @@ class Yendor extends Phaser.Scene
             {
                 if (this.preMovementHandler(this.player.x, this.player.y - th))
                 {
-                    this.player.y -= th;
+                    //this.player.y -= th;
+                    delta[1] = -th;
                     this.lastMoveTime = time;
                     player_moved = true;
                 }
@@ -474,7 +551,8 @@ class Yendor extends Phaser.Scene
             {
                 if (this.preMovementHandler(this.player.x - tw, this.player.y))
                 {
-                    this.player.x -= tw;
+                    //this.player.x -= tw;
+                    delta[0] = -tw;
                     this.lastMoveTime = time;
                     this.player.flipX=true;
                     player_moved = true;
@@ -484,18 +562,28 @@ class Yendor extends Phaser.Scene
             {
                 if (this.preMovementHandler(this.player.x + tw, this.player.y))
                 {
-                    this.player.x += tw;
+                    //this.player.x += tw;
+                    delta[0] = tw;
                     this.lastMoveTime = time;
                     this.player.flipX=false;
                     player_moved = true;
                 }
             }
 
-            this.light.x = this.player.x;
-            this.light.y = this.player.y;
 
             if (player_moved)
-                this.move_monsters();
+            {
+                // check if we have any collisions, if we do, do not allow the
+                // move
+                if (!this.isMonsterHere(this.player.x + delta[0], this.player.y + delta[1]))
+                {
+                    this.player.x += delta[0];
+                    this.player.y += delta[1];
+
+                    this.light.x = this.player.x;
+                    this.light.y = this.player.y;
+                }
+            }
         }
     }
 }
