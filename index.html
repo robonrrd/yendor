@@ -102,19 +102,6 @@ class Yendor extends Phaser.Scene
 
     }
 
-    monster_collision(A, B) {
-        var nn = "";
-        if (A.name.localeCompare(B.name) == -1)
-            nn = A.name + B.name;
-        else
-            nn = B.name + A.name;
-        this.fights[nn] = [A, B];
-    }
-
-    always_true(A, B) {
-        return true;
-    }
-
     create_monster(x, y, scale)
     {
         const tiles = this.textures.get('monster_tiles');
@@ -307,10 +294,6 @@ class Yendor extends Phaser.Scene
                                                           0.5*this.layer.scaleX );
                     new_monster.alpha = 1.0;
                     new_monster.room = room;
-
-                    this.physics.add.collider(this.player, new_monster, this.monster_collision,
-                                              this.always_true, this);
-                    new_monster.room = room;
                     this.monsters.push( new_monster );
                 }
             }
@@ -339,6 +322,14 @@ class Yendor extends Phaser.Scene
     {
         this.updatePlayerMovement(time);
 
+        // clean up dead monsters
+        var dead_monsters = this.monsters.filter(item => item.hp < 1);
+        this.monsters = this.monsters.filter(item => item.hp > 0);
+        for (var monster of dead_monsters)
+        {
+            monster.destroy();
+        }
+
         var playerTileX = this.map.worldToTileX(this.player.x);
         var playerTileY = this.map.worldToTileY(this.player.y);
 
@@ -354,7 +345,11 @@ class Yendor extends Phaser.Scene
                 this.setRoomAlpha(this.activeRoom, 0.5);
             }
             for (var monster of this.monsters) {
-                if (monster.room == room)
+                if (monster.hp < 1)
+                {
+                    monster.alpha = 0.0;
+                }
+                else if (monster.room == room)
                 {
                     monster.alpha = 1.0;
                 }
@@ -411,17 +406,11 @@ class Yendor extends Phaser.Scene
 
     isMonsterHere(worldX, worldY)
     {
-        var playerTileX = this.map.worldToTileX(worldX);
-        var playerTileY = this.map.worldToTileY(worldY);
-        var room = this.dungeon.getRoomAt(playerTileX, playerTileY);
+        for (var monster of this.monsters)
+            if ((monster.hp > 0) && (monster.room == this.activeRoom))
+                if (this.tilesIntersect(worldX, worldY, monster.x, monster.y))
+                    return true;
 
-        for (var monster of this.monsters) {
-            if ((monster.room == room) &&
-                this.tilesIntersect(worldX, worldY, monster.x, monster.y))
-            {
-                return true;
-            }
-        }
         return false;
     }
 
@@ -474,10 +463,43 @@ class Yendor extends Phaser.Scene
         // move towards player
     }
 
+    fight_monster(worldX, worldY)
+    {
+        // A round of combat if we have attempted to move into a square occupied
+        // by a monster
+        for (var monster of this.monsters) {
+            if ((monster.hp > 0) && (monster.room == this.activeRoom))
+            {
+                if (this.tilesIntersect(worldX, worldY, monster.x, monster.y))
+                {
+                    console.log("Fighting", monster.name);
+                    var p_atk = randInt(6) + this.player.atk;
+                    var m_atk = randInt(6) + monster.atk;
+                    if (p_atk > monster.def) {
+                        var dam = p_atk-monster.def;
+                        console.log(" ", monster.name, "was hit for", dam);
+                        monster.hp -= dam;
+                    }
+                    else {
+                        console.log("  player missed");
+                    }
+                    if ((monster.hp > 0) && (m_atk > this.player.def))
+                    {
+                        var dam = m_atk-this.player.def;
+                        console.log("player hit for", dam);
+                        this.player.hp -= dam;
+                        eventCenter.emit('chgHP', this.player.hp);
+                    }
+                }
+            }
+        }
+    }
+
     move_monsters()
     {
         // resolve fights
         const before_hp = this.player.hp;
+        /*
         for (const [key, fighters] of Object.entries(this.fights)) {
             var A = fighters[0];
             var B = fighters[1];
@@ -498,6 +520,7 @@ class Yendor extends Phaser.Scene
             }
         }
         this.fights = {};
+        */
 
         console.log("HP:", before_hp, this.player.hp);
         if (before_hp != this.player.hp) {
@@ -510,7 +533,7 @@ class Yendor extends Phaser.Scene
         var room = this.dungeon.getRoomAt(playerTileX, playerTileY);
 
         for (var monster of this.monsters) {
-            if (monster.room != room)
+            if ((monster.hp < 1) || (monster.room != room))
                 continue;
             this.monster_action(monster);
         }
@@ -583,11 +606,20 @@ class Yendor extends Phaser.Scene
                     this.light.x = this.player.x;
                     this.light.y = this.player.y;
                 }
+                else
+                {
+                    // fight the monster that we just bumped into
+                    console.log("bump!");
+                    this.fight_monster(this.player.x + delta[0], this.player.y + delta[1]);
+                }
             }
         }
     }
 }
 
+
+// Class for UI display
+//
 class UIScene extends Phaser.Scene
   {
     constructor ()
